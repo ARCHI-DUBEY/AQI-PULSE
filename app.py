@@ -4,7 +4,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+import io
+from datetime import datetime, timedelta, timezone
 from predict import predict_aqi
 from cities import cities
 import os
@@ -257,7 +258,8 @@ def fetch_forecast(lat, lon):
     rows = []
     for item in items[:40]:
         c = item["components"]
-        dt = datetime.utcfromtimestamp(item["dt"])
+        # FIX 1: utcfromtimestamp() is removed in Python 3.14 — use timezone-aware version
+        dt = datetime.fromtimestamp(item["dt"], tz=timezone.utc).replace(tzinfo=None)
         rows.append({
             "datetime": dt,
             "pm25": c["pm2_5"],
@@ -268,7 +270,6 @@ def fetch_forecast(lat, lon):
             "co":   c.get("co", 0),
         })
     return pd.DataFrame(rows)
-
 
 
 # ─────────────────────────────────────────────
@@ -427,7 +428,8 @@ with tabs[0]:
         fig_gauge.update_layout(paper_bgcolor="rgba(0,0,0,0)", height=300,
                                 font=dict(family="Sora", color="#94a3b8"),
                                 margin=dict(l=20, r=20, t=30, b=10))
-        st.plotly_chart(fig_gauge, use_container_width=True)
+        # FIX 2: use_container_width deprecated — use width='stretch'
+        st.plotly_chart(fig_gauge, width='stretch')
 
     with col_info:
         st.markdown('<div class="card-title">POLLUTANT SNAPSHOT</div>', unsafe_allow_html=True)
@@ -453,7 +455,7 @@ with tabs[0]:
 
     st.markdown("---")
 
-    # 48-hour AQI forecast using real forecast data
+    # 48-hour AQI forecast
     st.markdown('<div class="card-title">48-HOUR AQI FORECAST</div>', unsafe_allow_html=True)
     if not forecast_df.empty:
         try:
@@ -473,13 +475,12 @@ with tabs[0]:
             fillcolor="rgba(0,229,255,0.05)",
             name="Forecast AQI"
         ))
-        # Add threshold lines
         for lvl, col, lbl in [(50,"#22c55e","Good"), (100,"#facc15","Moderate"), (150,"#f97316","Unhealthy")]:
             fig_fc.add_hline(y=lvl, line_dash="dot", line_color=col, opacity=0.4,
                              annotation_text=lbl, annotation_font_color=col)
         fig_fc.update_layout(**PLOTLY_LAYOUT, height=280,
                              xaxis_title="Time (UTC)", yaxis_title="AQI")
-        st.plotly_chart(fig_fc, use_container_width=True)
+        st.plotly_chart(fig_fc, width='stretch')
 
 # ══════════════════════════════════════════════
 # TAB 2 — POLLUTANTS
@@ -514,7 +515,7 @@ with tabs[1]:
         font=dict(family="Sora", color="#94a3b8"),
         legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#1f2d40")
     )
-    st.plotly_chart(fig_radar, use_container_width=True)
+    st.plotly_chart(fig_radar, width='stretch')
 
     st.markdown("---")
     st.markdown('<div class="card-title">POLLUTANT FORECAST TREND</div>', unsafe_allow_html=True)
@@ -538,9 +539,8 @@ with tabs[1]:
             ))
         fig_trend.update_layout(**PLOTLY_LAYOUT, height=350,
                                 legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#1f2d40"))
-        st.plotly_chart(fig_trend, use_container_width=True)
+        st.plotly_chart(fig_trend, width='stretch')
 
-    # Hourly distribution heatmap
     st.markdown('<div class="card-title">PM2.5 HOURLY DISTRIBUTION (NEXT 5 DAYS)</div>', unsafe_allow_html=True)
     if not forecast_df.empty and len(forecast_df) >= 20:
         hm_df = forecast_df.copy()
@@ -556,7 +556,7 @@ with tabs[1]:
             )
         ))
         fig_hm.update_layout(**PLOTLY_LAYOUT, height=320)
-        st.plotly_chart(fig_hm, use_container_width=True)
+        st.plotly_chart(fig_hm, width='stretch')
 
 # ══════════════════════════════════════════════
 # TAB 3 — WEATHER
@@ -575,7 +575,6 @@ with tabs[2]:
 
     st.markdown("---")
 
-    # Weather-AQI correlation scatter (synthetic history)
     st.markdown('<div class="card-title">TEMPERATURE vs AQI CORRELATION</div>', unsafe_allow_html=True)
     np.random.seed(42)
     temps_hist = np.random.normal(temp, 5, 60)
@@ -594,9 +593,8 @@ with tabs[2]:
     ))
     scatter_fig.update_layout(**PLOTLY_LAYOUT, height=320,
                               xaxis_title=f"Temperature ({units})", yaxis_title="AQI")
-    st.plotly_chart(scatter_fig, use_container_width=True)
+    st.plotly_chart(scatter_fig, width='stretch')
 
-    # Weather conditions impact card
     st.markdown('<div class="card-title">WEATHER IMPACT ANALYSIS</div>', unsafe_allow_html=True)
     impacts = []
     if wind_speed > 5:
@@ -621,10 +619,6 @@ with tabs[2]:
 with tabs[3]:
     st.markdown('<div class="card-title">GLOBAL AQI MAP</div>', unsafe_allow_html=True)
 
-    # ── Map uses estimated AQI (no extra API calls) ──────────────
-    # Only the selected city uses real API data (already fetched above).
-    # All other cities use a deterministic seed so values are stable
-    # across rerenders but don't waste API quota.
     TYPICAL_AQI = {
         "Delhi, India": 158,      "Mumbai, India": 98,
         "Kolkata, India": 134,    "Bangalore, India": 72,
@@ -645,13 +639,11 @@ with tabs[3]:
 
     map_rows = []
     for cname, (clat, clon) in cities.items():
-        # Use real AQI for selected city, typical estimates for all others
         if cname == city:
             est_aqi = predicted_aqi
         else:
             est_aqi = TYPICAL_AQI.get(cname, None)
             if est_aqi is None:
-                # deterministic fallback based on city name hash
                 np.random.seed(hash(cname) % 9999)
                 est_aqi = int(np.random.randint(25, 180))
         lbl, col, _ = aqi_label(est_aqi)
@@ -661,7 +653,8 @@ with tabs[3]:
 
     map_df = pd.DataFrame(map_rows)
 
-    map_fig = px.scatter_mapbox(
+    # FIX 3: scatter_mapbox deprecated — use scatter_map with open-street-map style
+    map_fig = px.scatter_map(
         map_df, lat="lat", lon="lon",
         color="AQI", size="AQI",
         hover_name="City",
@@ -675,7 +668,7 @@ with tabs[3]:
             [1,    "#a855f7"]
         ],
         size_max=35, zoom=1.5,
-        mapbox_style="carto-darkmatter",
+        map_style="carto-darkmatter",
     )
     map_fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
@@ -685,9 +678,8 @@ with tabs[3]:
             tickfont=dict(color="#94a3b8")
         )
     )
-    st.plotly_chart(map_fig, use_container_width=True)
+    st.plotly_chart(map_fig, width='stretch')
 
-    # AQI ranking table
     st.markdown('<div class="card-title">CITY AQI RANKING (LIVE)</div>', unsafe_allow_html=True)
     ranked = map_df[["City", "AQI", "Category"]].sort_values("AQI").reset_index(drop=True)
     ranked.insert(0, "Rank", range(1, len(ranked) + 1))
@@ -695,7 +687,7 @@ with tabs[3]:
         ranked.style
               .background_gradient(subset=["AQI"], cmap="RdYlGn_r")
               .set_properties(**{"background-color": "#111827", "color": "#e2e8f0"}),
-        use_container_width=True, hide_index=True
+        width='stretch', hide_index=True
     )
 
 # ══════════════════════════════════════════════
@@ -732,7 +724,6 @@ with tabs[4]:
         c_no2  = c_comp["no2"]
         c_aqi  = predict_aqi(c_pm25, c_pm10, c_no2, c_wx["temp"], c_wx["humidity"])
 
-        # Head-to-head KPIs
         st.markdown('<div class="card-title">HEAD-TO-HEAD COMPARISON</div>', unsafe_allow_html=True)
         hh1, hh2, hh3 = st.columns([2, 1, 2])
 
@@ -777,7 +768,6 @@ with tabs[4]:
 
         st.markdown("---")
 
-        # Grouped bar: all pollutants
         st.markdown('<div class="card-title">POLLUTANT BREAKDOWN</div>', unsafe_allow_html=True)
         poll_compare_df = pd.DataFrame({
             "Pollutant": ["PM2.5", "PM10", "NO₂", "O₃", "SO₂"],
@@ -793,9 +783,8 @@ with tabs[4]:
         fig_bar.update_layout(**PLOTLY_LAYOUT, barmode="group", height=320,
                               legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#1f2d40"),
                               yaxis_title="µg/m³")
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width='stretch')
 
-        # Radar comparison
         st.markdown('<div class="card-title">RADAR COMPARISON</div>', unsafe_allow_html=True)
         r_cats = ["PM2.5", "PM10", "NO₂", "O₃", "SO₂"]
         r_v1   = [pm25, pm10, no2, o3, so2]
@@ -819,7 +808,7 @@ with tabs[4]:
             font=dict(family="Sora", color="#94a3b8"),
             legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#1f2d40")
         )
-        st.plotly_chart(fig_cr, use_container_width=True)
+        st.plotly_chart(fig_cr, width='stretch')
 
 # ══════════════════════════════════════════════
 # TAB 6 — HEALTH
@@ -833,7 +822,6 @@ with tabs[5]:
     </div>
     """, unsafe_allow_html=True)
 
-    # Group risk matrix
     st.markdown('<div class="card-title">POPULATION RISK MATRIX</div>', unsafe_allow_html=True)
     groups = [
         ("👶 Children",          predicted_aqi * 1.3),
@@ -859,7 +847,7 @@ with tabs[5]:
                                 gridcolor="#1f2d40", zerolinecolor="#1f2d40")
     risk_layout["yaxis"] = dict(gridcolor="rgba(0,0,0,0)")
     fig_risk.update_layout(**risk_layout)
-    st.plotly_chart(fig_risk, use_container_width=True)
+    st.plotly_chart(fig_risk, width='stretch')
 
     st.markdown('<div class="card-title">HEALTH RECOMMENDATIONS</div>', unsafe_allow_html=True)
     recs = {
@@ -908,7 +896,7 @@ with tabs[5]:
             "Health warnings of emergency conditions"
         ]
     })
-    st.dataframe(ref_df, use_container_width=True, hide_index=True)
+    st.dataframe(ref_df, width='stretch', hide_index=True)
 
 # ─────────────────────────────────────────────
 # FOOTER

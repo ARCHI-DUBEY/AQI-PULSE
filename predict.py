@@ -1,5 +1,6 @@
 import joblib
 import numpy as np
+import pandas as pd
 
 model = joblib.load("aqi_model.pkl")
 
@@ -26,7 +27,12 @@ def predict_aqi(pm25, pm10, no2, temp, humidity):
     so that even if the model drifts, PM2.5 — the dominant
     pollutant — keeps the output grounded.
     """
-    features = np.array([[pm25, pm10, no2, temp, humidity]])
+    # FIX: Pass a DataFrame with named columns to match training data
+    # This eliminates the sklearn "X does not have valid feature names" warning
+    features = pd.DataFrame(
+        [[pm25, pm10, no2, temp, humidity]],
+        columns=["pm25", "pm10", "no2", "temp", "humidity"]
+    )
 
     ml_pred  = model.predict(features)[0]
     epa_pred = _pm25_to_aqi(pm25)
