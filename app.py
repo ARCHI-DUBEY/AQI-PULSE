@@ -456,15 +456,12 @@ with tabs[0]:
     # 48-hour AQI forecast using real forecast data
     st.markdown('<div class="card-title">48-HOUR AQI FORECAST</div>', unsafe_allow_html=True)
     if not forecast_df.empty:
-        @st.cache_data(ttl=600, show_spinner=False)
-        def _forecast_aqi(df_json, _temp, _hum):
-            if df_json is None or df_json == "":
-                return pd.DataFrame()
-            df = pd.read_json(df_json)
-            df["aqi_pred"] = df.apply(
-                lambda r: predict_aqi(r["pm25"], r["pm10"], r["no2"], _temp, _hum), axis=1)
-            return df
-        forecast_df = _forecast_aqi(forecast_df.to_json(), temp, humidity)
+        try:
+            forecast_df["aqi_pred"] = forecast_df.apply(
+                lambda r: predict_aqi(r["pm25"], r["pm10"], r["no2"], temp, humidity), axis=1)
+        except Exception:
+            forecast_df["aqi_pred"] = forecast_df["pm25"].apply(
+                lambda x: predict_aqi(x, 60, 30, temp, humidity))
         fig_fc = go.Figure()
         fig_fc.add_trace(go.Scatter(
             x=forecast_df["datetime"][:8],
