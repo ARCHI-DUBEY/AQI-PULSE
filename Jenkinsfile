@@ -5,7 +5,8 @@ pipeline {
 
         stage('Clone Repository') {
             steps {
-                echo 'Cloning GitHub repository...'
+                git branch: 'devops-integration',
+                url: 'https://github.com/ARCHI-DUBEY/AQI-PULSE.git'
             }
         }
 
@@ -15,13 +16,17 @@ pipeline {
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Stop Old Container') {
             steps {
                 bat 'docker stop aqi-container || exit 0'
                 bat 'docker rm aqi-container || exit 0'
-                bat 'docker run -d -p 8501:8501 --name aqi-container aqi-pulse'
             }
         }
 
+        stage('Run Docker Container') {
+            steps {
+                bat 'docker run -d --name aqi-container -p 8501:8501 aqi-pulse'
+            }
+        }
     }
 }
