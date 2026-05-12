@@ -4,10 +4,12 @@ __pycache__/
 *.pyd
 .Python
 
+.env
 .git
 .gitignore
 
 venv/
+.env/
 
 .idea/
 .vscode/
