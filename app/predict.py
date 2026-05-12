@@ -1,7 +1,11 @@
+import os
 import joblib
 import numpy as np
 
-model = joblib.load("aqi_model.pkl")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH = os.path.join(BASE_DIR, "model", "aqi_model.pkl")
+
+model = joblib.load(MODEL_PATH)
 
 # ── US EPA PM2.5 → AQI breakpoints (used as a sanity anchor) ─
 def _pm25_to_aqi(pm):
