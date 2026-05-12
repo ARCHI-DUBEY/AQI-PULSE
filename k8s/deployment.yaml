@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: aqi-deployment
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: aqi-app
+
+  template:
+    metadata:
+      labels:
+        app: aqi-app
+
+    spec:
+      containers:
+      - name: aqi-container
+        image: aqi-pulse
+        imagePullPolicy: Never
+
+        ports:
+        - containerPort: 8501
