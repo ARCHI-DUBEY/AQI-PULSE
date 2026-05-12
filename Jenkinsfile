@@ -25,7 +25,7 @@ pipeline {
 
         stage('Run Docker Container') {
             steps {
-                bat 'docker run -d --name aqi-container --env-file .env -p 8501:8501 aqi-pulse'
+                bat 'docker run -d --name aqi-container -p 8501:8501 aqi-pulse'
             }
         }
     }
